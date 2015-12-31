@@ -1,7 +1,6 @@
 package parsers
 
 import (
-	"fmt"
 	"strconv"
 
 	. "github.com/vburenin/firempq_connector/fmpq_err"
@@ -16,5 +15,25 @@ func ParseInt(v string) (int64, error) {
 		return v, nil
 	}
 
-	return 0, NewFireMpqError(-2, fmt.Sprintf("Wrong int format: %s", v))
+	return 0, WrongDataFormatError("int type", v)
+}
+
+func ParseArraySize(v string) (int64, error) {
+	if v[0] == '*' {
+		if v, err := strconv.ParseInt(v[1:], 10, 0); err == nil {
+			return v, nil
+		}
+	}
+
+	return 0, WrongDataFormatError("array size", v)
+}
+
+func ParseMapSize(v string) (int64, error) {
+	if v[0] == '%' {
+		if v, err := strconv.ParseInt(v[1:], 10, 0); err == nil {
+			return v, nil
+		}
+	}
+
+	return 0, WrongDataFormatError("map size", v)
 }

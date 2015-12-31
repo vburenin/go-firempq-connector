@@ -1,14 +1,6 @@
 package parsers
 
-import (
-	"fmt"
-
-	. "github.com/vburenin/firempq_connector/fmpq_err"
-)
-
-func UnexpectedErrorFormat(tokens []string) *FireMpqError {
-	return NewFireMpqError(-1, fmt.Sprintf("Unexpected error format: %s", tokens))
-}
+import . "github.com/vburenin/firempq_connector/fmpq_err"
 
 func ParseError(tokens []string) *FireMpqError {
 	if tokens[0] == "-ERR" {

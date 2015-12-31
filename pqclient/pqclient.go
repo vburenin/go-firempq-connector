@@ -1,23 +1,14 @@
 package pqclient
 
 import (
-	"errors"
-	"fmt"
 	"net"
 
 	. "github.com/vburenin/firempq_connector/api"
 	. "github.com/vburenin/firempq_connector/encoders"
+	. "github.com/vburenin/firempq_connector/fmpq_err"
 	. "github.com/vburenin/firempq_connector/netutils"
 	. "github.com/vburenin/firempq_connector/parsers"
 )
-
-type PriorityQueueMessage struct {
-	Id       string
-	Payload  string
-	ExpireTs int64
-	UnlockTs int64
-	PopCount int64
-}
 
 type PriorityQueue struct {
 	conn      net.Conn
@@ -28,9 +19,9 @@ type PriorityQueue struct {
 
 var CMD_PUSH = []byte("PUSH")
 var CMD_POP = []byte("POP")
+var CMD_POP_LOCK = []byte("POPLCK")
 var CMD_CTX = []byte("CTX")
 var CMD_SET_PARAM = []byte("SET_PARAM")
-var PARAM_PAYLOAD = []byte("PL")
 
 func NewPriorityQueue(queueName string, conn net.Conn, tokReader ITokenReader) (*PriorityQueue, error) {
 	pq := &PriorityQueue{
@@ -57,6 +48,42 @@ func (self *PriorityQueue) Push(msg *PQPushMessage) error {
 	return self.handleOk()
 }
 
+// Pop pops available from the queue completely removing them.
+func (self *PriorityQueue) Pop(opts *popOptions) ([]*PriorityQueueMessage, error) {
+	if err := SendCommand(self.conn, CMD_POP, opts.makeParams()...); err != nil {
+		return nil, err
+	}
+
+	return self.handleMessages()
+}
+
+// PopLock pops available from the queue locking them.
+func (self *PriorityQueue) PopLock(opts *popLockOptions) ([]*PriorityQueueMessage, error) {
+	if err := SendCommand(self.conn, CMD_POP_LOCK, opts.makeParams()...); err != nil {
+		return nil, err
+	}
+
+	return self.handleMessages()
+}
+
+func (self *PriorityQueue) handleMessages() ([]*PriorityQueueMessage, error) {
+	tokens, err := self.tokReader.ReadTokens()
+
+	if err != nil {
+		return nil, err
+	}
+
+	if tokens[0] == "+MSGS" {
+		return parsePoppedMessages(tokens[1:])
+	}
+
+	if err := ParseError(tokens); err != nil {
+		return nil, err
+	}
+
+	return nil, UnexpectedResponse(tokens)
+}
+
 func (self *PriorityQueue) initContext(queueName string) (*PriorityQueue, error) {
 	if err := SendCommand(self.conn, CMD_CTX, EncodeString(queueName)); err != nil {
 		return nil, err
@@ -79,5 +106,5 @@ func (self *PriorityQueue) handleOk() error {
 	if err := ParseError(tokens); err != nil {
 		return err
 	}
-	return errors.New(fmt.Sprintf("Unexpected response: %s", tokens))
+	return UnexpectedResponse(tokens)
 }

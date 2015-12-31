@@ -2,13 +2,10 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
-
-	"firempq/log"
-
-	"time"
-
 	"sync"
+	"time"
 
 	. "github.com/vburenin/firempq_connector/fmpq_err"
 	. "github.com/vburenin/firempq_connector/parsers"
@@ -96,8 +93,8 @@ func inc() {
 
 }
 
-func pusher() {
-	c, err := NewFireMpqClient("tcp", "10.0.1.37:9033")
+func getCtx() *PriorityQueue {
+	c, err := NewFireMpqClient("tcp", "127.0.0.1:9033")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -106,7 +103,11 @@ func pusher() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+	return pq
+}
 
+func pusher() {
+	pq := getCtx()
 	msg := pq.NewMessage("some data")
 	for {
 		if err := pq.Push(msg); err != nil {
@@ -117,11 +118,28 @@ func pusher() {
 
 }
 
-func main() {
-	log.InitLogging()
-	last_ts = time.Now().UnixNano()
-	for i := 0; i < 500; i++ {
-		go pusher()
+func pushAndPop() {
+	pq := getCtx()
+	msg := pq.NewMessage("asdasdasd")
+	if err := pq.Push(msg); err != nil {
+		log.Fatal(err.Error())
 	}
-	time.Sleep(time.Second * 1000)
+	msg = pq.NewMessage("asdasdasd")
+	if err := pq.Push(msg); err != nil {
+		log.Fatal(err.Error())
+	}
+	m, err := pq.Pop(NewPopOptions().SetLimit(2))
+	fmt.Printf("%s", m)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+}
+
+func main() {
+	last_ts = time.Now().UnixNano()
+	//for i := 0; i < 500; i++ {
+	//	go pusher()
+	//}
+	//time.Sleep(time.Second * 1000)
+	pushAndPop()
 }
