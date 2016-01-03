@@ -40,7 +40,7 @@ func (opts *popOptions) SetAsyncCallback(cb func(*PriorityQueue, error)) *popOpt
 	return opts
 }
 
-func (opts *popOptions) makeParams() [][]byte {
+func (opts *popOptions) MakeParams() [][]byte {
 	if opts == nil {
 		return nil
 	}
@@ -95,7 +95,7 @@ func (opts *popLockOptions) SetAsyncCallback(cb func(*PriorityQueue, error)) *po
 	return opts
 }
 
-func (opts *popLockOptions) makeParams() [][]byte {
+func (opts *popLockOptions) MakeParams() [][]byte {
 	if opts == nil {
 		return nil
 	}
@@ -116,5 +116,108 @@ func (opts *popLockOptions) makeParams() [][]byte {
 		args = append(args, popPrmAsync)
 		args = append(args, EncodeString(opts.asyncId))
 	}
+	return args
+}
+
+type PqOptions struct {
+	msgTtl      int64
+	maxSize     int64
+	delay       int64
+	popLimit    int64
+	lockTimeout int64
+}
+
+func NewPQueueOptions() *PqOptions {
+	return &PqOptions{
+		msgTtl:      -1,
+		maxSize:     -1,
+		delay:       -1,
+		popLimit:    -1,
+		lockTimeout: -1,
+	}
+}
+
+// SetMsgTtl sets default message ttl. Value must be positive.
+func (opts *PqOptions) SetMsgTtl(v int64) *PqOptions {
+	if v < 0 {
+		panic("Value must be positive")
+	}
+	opts.msgTtl = v
+	return opts
+}
+
+// SetMaxSize sets default max queue size. Value must be positive.
+func (opts *PqOptions) SetMaxSize(v int64) *PqOptions {
+	if v < 0 {
+		panic("Value must be positive")
+	}
+	opts.maxSize = v
+	return opts
+}
+
+// SetDelay sets default message delivery delay. Value must be positive.
+func (opts *PqOptions) SetDelay(v int64) *PqOptions {
+	if v < 0 {
+		panic("Value must be positive")
+	}
+	opts.delay = v
+	return opts
+}
+
+// SetPopLimit sets max number of pop attempts for each message . Value must be positive.
+func (opts *PqOptions) SetPopLimit(v int64) *PqOptions {
+	if v < 0 {
+		panic("Value must be positive")
+	}
+	opts.popLimit = v
+	return opts
+}
+
+// SetLockTimeout sets default pop lock timeout. Value must be positive.
+func (opts *PqOptions) SetLockTimeout(v int64) *PqOptions {
+	if v < 0 {
+		panic("Value must be positive")
+	}
+	opts.lockTimeout = v
+	return opts
+}
+
+var pqOptLimit = []byte("MSGTTL")
+var pqOptMaxSize = []byte("MAXSIZE")
+var pqOptDelay = []byte("DELAY")
+var pqOptPopLimit = []byte("POPLIMIT")
+var pqOptLockTimeout = []byte("TIMEOUT")
+
+func (opts *PqOptions) MakeParams() [][]byte {
+	if opts == nil {
+		return nil
+	}
+
+	args := make([][]byte, 0, 2)
+	if opts.msgTtl > 0 {
+		args = append(args, pqOptLimit)
+		args = append(args, EncodeInt64(opts.msgTtl))
+	}
+
+	if opts.maxSize > 0 {
+		args = append(args, pqOptMaxSize)
+		args = append(args, EncodeInt64(opts.maxSize))
+	}
+
+	if opts.delay >= 0 {
+		args = append(args, pqOptDelay)
+		args = append(args, EncodeInt64(opts.delay))
+	}
+
+	if opts.popLimit >= 0 {
+		args = append(args, pqOptPopLimit)
+		args = append(args, EncodeInt64(opts.popLimit))
+	}
+
+	if opts.lockTimeout >= 0 {
+		args = append(args, pqOptLockTimeout)
+		args = append(args, EncodeInt64(opts.lockTimeout))
+	}
+
 	return args
 }

@@ -64,7 +64,15 @@ func (self *FireMpqClient) GetPQueue(queueName string) (*PriorityQueue, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewPriorityQueue(queueName, conn, tokReader)
+	return SetPQueueContext(queueName, conn, tokReader)
+}
+
+func (self *FireMpqClient) CreatePQueue(queueName string, opts *PqOptions) (*PriorityQueue, error) {
+	conn, tokReader, err := self.makeConn()
+	if err != nil {
+		return nil, err
+	}
+	return CreatePQueue(queueName, conn, tokReader, opts)
 }
 
 var last_ts int64
@@ -136,10 +144,15 @@ func pushAndPop() {
 }
 
 func main() {
-	last_ts = time.Now().UnixNano()
-	//for i := 0; i < 500; i++ {
-	//	go pusher()
-	//}
-	//time.Sleep(time.Second * 1000)
-	pushAndPop()
+	c, err := NewFireMpqClient("tcp", "127.0.0.1:9033")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	pq, err := c.CreatePQueue("my", NewPQueueOptions().SetDelay(1000))
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	println(pq.Push(NewPQPushMessage("some_payload")))
+
 }
