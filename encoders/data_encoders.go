@@ -5,6 +5,7 @@ import (
 )
 
 func EncodeString(v string) []byte {
+	// format: ${length}{space}{content}
 	a := make([]byte, 1, 12+len(v))
 	a[0] = '$'
 	num := strconv.AppendInt(make([]byte, 0, 10), int64(len(v)), 10)
