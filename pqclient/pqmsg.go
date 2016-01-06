@@ -76,7 +76,7 @@ func (self *PQPushMessage) encode() [][]byte {
 		data = append(data, prmId)
 		data = append(data, EncodeString(self.id))
 	}
-	if self.priority != 0 {
+	if self.priority > 0 {
 		data = append(data, prmPriority)
 		data = append(data, EncodeInt64(self.priority))
 	}
@@ -100,6 +100,7 @@ func (self *PQPushMessage) encode() [][]byte {
 type PriorityQueueMessage struct {
 	Id       string
 	Payload  string
+	Receipt  string
 	ExpireTs int64
 	UnlockTs int64
 	PopCount int64
@@ -141,6 +142,7 @@ func parsePoppedMessages(tokens []string) ([]*PriorityQueueMessage, error) {
 func parseMessage(tokens []string) (*PriorityQueueMessage, error) {
 	msg := PriorityQueueMessage{}
 	var err error
+
 	idx := len(tokens) - 2
 	for idx >= 0 {
 		switch tokens[idx] {
@@ -148,6 +150,8 @@ func parseMessage(tokens []string) (*PriorityQueueMessage, error) {
 			msg.Id = tokens[idx+1]
 		case "PL":
 			msg.Payload = tokens[idx+1]
+		case "RCPT":
+			msg.Receipt = tokens[idx+1]
 		case "UTS":
 			msg.UnlockTs, err = ParseInt(tokens[idx+1])
 		case "ETS":
