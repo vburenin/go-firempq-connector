@@ -40,7 +40,7 @@ func (opts *popOptions) SetAsyncCallback(cb func(*PriorityQueue, error)) *popOpt
 	return opts
 }
 
-func (opts *popOptions) MakeParams() [][]byte {
+func (opts *popOptions) makeRequest() [][]byte {
 	if opts == nil {
 		return nil
 	}
@@ -95,7 +95,7 @@ func (opts *popLockOptions) SetAsyncCallback(cb func(*PriorityQueue, error)) *po
 	return opts
 }
 
-func (opts *popLockOptions) MakeParams() [][]byte {
+func (opts *popLockOptions) makeRequest() [][]byte {
 	if opts == nil {
 		return nil
 	}
@@ -119,7 +119,7 @@ func (opts *popLockOptions) MakeParams() [][]byte {
 	return args
 }
 
-type PqOptions struct {
+type PqParams struct {
 	msgTtl      int64
 	maxSize     int64
 	delay       int64
@@ -127,8 +127,8 @@ type PqOptions struct {
 	lockTimeout int64
 }
 
-func NewPQueueOptions() *PqOptions {
-	return &PqOptions{
+func NewPQueueOptions() *PqParams {
+	return &PqParams{
 		msgTtl:      -1,
 		maxSize:     -1,
 		delay:       -1,
@@ -138,7 +138,7 @@ func NewPQueueOptions() *PqOptions {
 }
 
 // SetMsgTtl sets default message ttl. Value must be positive.
-func (opts *PqOptions) SetMsgTtl(v int64) *PqOptions {
+func (opts *PqParams) SetMsgTtl(v int64) *PqParams {
 	if v < 0 {
 		panic("Value must be positive")
 	}
@@ -147,7 +147,7 @@ func (opts *PqOptions) SetMsgTtl(v int64) *PqOptions {
 }
 
 // SetMaxSize sets default max queue size. Value must be positive.
-func (opts *PqOptions) SetMaxSize(v int64) *PqOptions {
+func (opts *PqParams) SetMaxSize(v int64) *PqParams {
 	if v < 0 {
 		panic("Value must be positive")
 	}
@@ -156,7 +156,7 @@ func (opts *PqOptions) SetMaxSize(v int64) *PqOptions {
 }
 
 // SetDelay sets default message delivery delay. Value must be positive.
-func (opts *PqOptions) SetDelay(v int64) *PqOptions {
+func (opts *PqParams) SetDelay(v int64) *PqParams {
 	if v < 0 {
 		panic("Value must be positive")
 	}
@@ -165,7 +165,7 @@ func (opts *PqOptions) SetDelay(v int64) *PqOptions {
 }
 
 // SetPopLimit sets max number of pop attempts for each message . Value must be positive.
-func (opts *PqOptions) SetPopLimit(v int64) *PqOptions {
+func (opts *PqParams) SetPopLimit(v int64) *PqParams {
 	if v < 0 {
 		panic("Value must be positive")
 	}
@@ -174,7 +174,7 @@ func (opts *PqOptions) SetPopLimit(v int64) *PqOptions {
 }
 
 // SetLockTimeout sets default pop lock timeout. Value must be positive.
-func (opts *PqOptions) SetLockTimeout(v int64) *PqOptions {
+func (opts *PqParams) SetLockTimeout(v int64) *PqParams {
 	if v < 0 {
 		panic("Value must be positive")
 	}
@@ -188,7 +188,7 @@ var pqOptDelay = []byte("DELAY")
 var pqOptPopLimit = []byte("POPLIMIT")
 var pqOptLockTimeout = []byte("TIMEOUT")
 
-func (opts *PqOptions) MakeParams() [][]byte {
+func (opts *PqParams) makeRequest() [][]byte {
 	if opts == nil {
 		return nil
 	}

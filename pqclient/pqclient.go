@@ -17,32 +17,45 @@ type PriorityQueue struct {
 	asyncPop  map[string]func([]PriorityQueueMessage, error)
 }
 
-var cmdPush = []byte("PUSH")
-var cmdPop = []byte("POP")
-var cmdPopLock = []byte("POPLCK")
-var cmdCtx = []byte("CTX")
-var cmdCrt = []byte("CRT")
-var cmdSetParams = []byte("SET_PARAM")
+var (
+	cmdPush             = []byte("PUSH")
+	cmdPop              = []byte("POP")
+	cmdPopLock          = []byte("POPLCK")
+	cmdCtx              = []byte("CTX")
+	cmdCrt              = []byte("CRT")
+	cmdSetCfg           = []byte("SETCFG")
+	cmdDeleteById       = []byte("DEL")
+	cmdDeleteByReceipt  = []byte("RDEL")
+	cmdDeleteLockedById = []byte("DELLCK")
+	cmdUnlockById       = []byte("UNLCK")
+	cmdUnlockByReceipt  = []byte("RUNLCK")
 
-var svcPqueueType = []byte("pqueue")
+	svcPqueueType = []byte("pqueue")
+)
 
 func SetPQueueContext(queueName string, conn net.Conn, tokReader ITokenReader) (*PriorityQueue, error) {
+	if err := SendCommand(conn, cmdCtx, EncodeString(queueName)); err != nil {
+		return nil, err
+	}
+	if err := HandleOk(tokReader); err != nil {
+		return nil, err
+	}
 	pq := &PriorityQueue{
 		conn:      conn,
 		tokReader: tokReader,
 		queueName: queueName,
 	}
-	return pq.initContext(queueName)
+	return pq, nil
 }
 
 func CreatePQueue(queueName string, conn net.Conn, tokReader ITokenReader,
-	opts *PqOptions) (*PriorityQueue, error) {
+	opts *PqParams) (*PriorityQueue, error) {
 
 	if err := SendIncompleteData(conn, cmdCrt, []byte(queueName), svcPqueueType); err != nil {
 		return nil, err
 	}
 
-	if err := SendCompleteData(conn, opts.MakeParams()...); err != nil {
+	if err := SendCompleteData(conn, opts.makeRequest()...); err != nil {
 		return nil, err
 	}
 
@@ -71,7 +84,7 @@ func (self *PriorityQueue) Push(msg *PQPushMessage) error {
 
 // Pop pops available from the queue completely removing them.
 func (self *PriorityQueue) Pop(opts *popOptions) ([]*PriorityQueueMessage, error) {
-	if err := SendCommand(self.conn, cmdPop, opts.MakeParams()...); err != nil {
+	if err := SendCommand(self.conn, cmdPop, opts.makeRequest()...); err != nil {
 		return nil, err
 	}
 
@@ -80,11 +93,53 @@ func (self *PriorityQueue) Pop(opts *popOptions) ([]*PriorityQueueMessage, error
 
 // PopLock pops available from the queue locking them.
 func (self *PriorityQueue) PopLock(opts *popLockOptions) ([]*PriorityQueueMessage, error) {
-	if err := SendCommand(self.conn, cmdPopLock, opts.MakeParams()...); err != nil {
+	if err := SendCommand(self.conn, cmdPopLock, opts.makeRequest()...); err != nil {
 		return nil, err
 	}
 
 	return self.handleMessages()
+}
+
+func (self *PriorityQueue) DeleteById(id string) error {
+	if err := SendCommand(self.conn, cmdDeleteById, EncodeString(id)); err != nil {
+		return err
+	}
+	return HandleOk(self.tokReader)
+}
+
+func (self *PriorityQueue) DeleteLockedById(id string) error {
+	if err := SendCommand(self.conn, cmdDeleteLockedById, EncodeString(id)); err != nil {
+		return err
+	}
+	return HandleOk(self.tokReader)
+}
+
+func (self *PriorityQueue) DeleteByReceipt(rcpt string) error {
+	if err := SendCommand(self.conn, cmdDeleteByReceipt, EncodeString(rcpt)); err != nil {
+		return err
+	}
+	return HandleOk(self.tokReader)
+}
+
+func (self *PriorityQueue) UnlockById(id string) error {
+	if err := SendCommand(self.conn, cmdUnlockById, EncodeString(id)); err != nil {
+		return err
+	}
+	return HandleOk(self.tokReader)
+}
+
+func (self *PriorityQueue) UnlockByReceipt(rcpt string) error {
+	if err := SendCommand(self.conn, cmdUnlockByReceipt, EncodeString(rcpt)); err != nil {
+		return err
+	}
+	return HandleOk(self.tokReader)
+}
+
+func (self *PriorityQueue) SetParams(params *PqParams) error {
+	if err := SendCommand(self.conn, cmdSetCfg, params.makeRequest()...); err != nil {
+		return err
+	}
+	return HandleOk(self.tokReader)
 }
 
 func (self *PriorityQueue) handleMessages() ([]*PriorityQueueMessage, error) {
@@ -103,15 +158,4 @@ func (self *PriorityQueue) handleMessages() ([]*PriorityQueueMessage, error) {
 	}
 
 	return nil, UnexpectedResponse(tokens)
-}
-
-func (self *PriorityQueue) initContext(queueName string) (*PriorityQueue, error) {
-	if err := SendCommand(self.conn, cmdCtx, EncodeString(queueName)); err != nil {
-		return nil, err
-	}
-
-	if err := HandleOk(self.tokReader); err != nil {
-		return nil, err
-	}
-	return self, nil
 }

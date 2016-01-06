@@ -67,7 +67,7 @@ func (self *FireMpqClient) GetPQueue(queueName string) (*PriorityQueue, error) {
 	return SetPQueueContext(queueName, conn, tokReader)
 }
 
-func (self *FireMpqClient) CreatePQueue(queueName string, opts *PqOptions) (*PriorityQueue, error) {
+func (self *FireMpqClient) CreatePQueue(queueName string, opts *PqParams) (*PriorityQueue, error) {
 	conn, tokReader, err := self.makeConn()
 	if err != nil {
 		return nil, err
@@ -149,10 +149,35 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	pq, err := c.CreatePQueue("my", NewPQueueOptions().SetDelay(1000))
+	pq, err := c.GetPQueue("my")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	println(pq.Push(NewPQPushMessage("some_payload")))
-
+	v := pq.SetParams(NewPQueueOptions().SetDelay(0).SetPopLimit(10).SetMsgTtl(5000))
+	if v != nil {
+		log.Fatal(v.Error())
+	}
+	err = pq.Push(pq.NewMessage("asdasdasdasdas"))
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	err = pq.Push(pq.NewMessage("asdasdasdasdas"))
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	err = pq.Push(pq.NewMessage("asdasdasdasdas"))
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	msg, err := pq.PopLock(nil)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	if len(msg) == 0 {
+		return
+	}
+	err = pq.DeleteByReceipt(msg[0].Receipt)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
 }
