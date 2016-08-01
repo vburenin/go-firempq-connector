@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"bufio"
+
 	. "github.com/vburenin/firempq_connector/fmpq_err"
 	. "github.com/vburenin/firempq_connector/parsers"
 	. "github.com/vburenin/firempq_connector/pqclient"
@@ -25,7 +27,7 @@ func NewFireMpqClient(network, address string) (*FireMpqClient, error) {
 	}
 
 	fmc := &FireMpqClient{connFactory: factory}
-	if c, _, err := fmc.makeConn(); err != nil {
+	if c, _, _, err := fmc.makeConn(); err != nil {
 		return nil, err
 	} else {
 		c.Close()
@@ -33,46 +35,47 @@ func NewFireMpqClient(network, address string) (*FireMpqClient, error) {
 	}
 }
 
-func (self *FireMpqClient) GetVersion() string {
-	return self.version
+func (fmc *FireMpqClient) GetVersion() string {
+	return fmc.version
 }
 
-func (self *FireMpqClient) makeConn() (net.Conn, *TokenReader, error) {
-	conn, err := self.connFactory()
+func (fmc *FireMpqClient) makeConn() (net.Conn, *bufio.Writer, *TokenReader, error) {
+	conn, err := fmc.connFactory()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	tokReader := NewTokenReader(conn)
 	connHdr, err := tokReader.ReadTokens()
 
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if len(connHdr) == 2 && connHdr[0] == "+HELLO" {
 		// TODO(vburenin): Add version check and log warning if version accidentaly changes.
-		self.version = connHdr[1]
+		fmc.version = connHdr[1]
 	} else {
-		return nil, nil, NewFireMpqError(-3, fmt.Sprintf("Unexpected hello string: %s", connHdr))
+		return nil, nil, nil, NewFireMpqError(-3, fmt.Sprintf("Unexpected hello string: %s", connHdr))
 	}
-	return conn, tokReader, nil
+	bufWriter := bufio.NewWriter(conn)
+	return conn, bufWriter, tokReader, nil
 }
 
-func (self *FireMpqClient) GetPQueue(queueName string) (*PriorityQueue, error) {
-	conn, tokReader, err := self.makeConn()
+func (fmc *FireMpqClient) GetPQueue(queueName string) (*PriorityQueue, error) {
+	_, bufWriter, tokReader, err := fmc.makeConn()
 	if err != nil {
 		return nil, err
 	}
-	return SetPQueueContext(queueName, conn, tokReader)
+	return SetPQueueContext(queueName, bufWriter, tokReader)
 }
 
-func (self *FireMpqClient) CreatePQueue(queueName string, opts *PqParams) (*PriorityQueue, error) {
-	conn, tokReader, err := self.makeConn()
+func (fmc *FireMpqClient) CreatePQueue(queueName string, opts *PqParams) (*PriorityQueue, error) {
+	_, bufWriter, tokReader, err := fmc.makeConn()
 	if err != nil {
 		return nil, err
 	}
-	return CreatePQueue(queueName, conn, tokReader, opts)
+	return CreatePQueue(queueName, bufWriter, tokReader, opts)
 }
 
 var last_ts int64
@@ -143,8 +146,8 @@ func pushAndPop() {
 	}
 }
 
-func main() {
-	c, err := NewFireMpqClient("tcp", "127.0.0.1:9033")
+func update() {
+	c, err := NewFireMpqClient("tcp", "127.0.0.1:8222")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -153,31 +156,42 @@ func main() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	v := pq.SetParams(NewPQueueOptions().SetDelay(0).SetPopLimit(10).SetMsgTtl(5000))
-	if v != nil {
-		log.Fatal(v.Error())
+	//v := pq.SetParams(NewPQueueOptions().SetDelay(0).SetPopLimit(10).SetMsgTtl(5000))
+	//if v != nil {
+	//	log.Fatal(v.Error())
+	//}
+	l := 0
+	st := time.Now()
+	for i := 0; i < 2; i++ {
+		l++
+
+		if l == 10000 {
+			et := time.Now()
+			d := float64(et.UnixNano()-st.UnixNano()) / 1000000000
+			println(int64(10000.0 / d))
+			l = 0
+			st = time.Now()
+		}
+
+		err = pq.Push(pq.NewMessage("asdasdasdasdas"))
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		msg, err := pq.PopLock(nil)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		if len(msg) == 0 {
+			return
+		}
+		err = pq.DeleteByReceipt(msg[0].Receipt)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+
 	}
-	err = pq.Push(pq.NewMessage("asdasdasdasdas"))
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-	err = pq.Push(pq.NewMessage("asdasdasdasdas"))
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-	err = pq.Push(pq.NewMessage("asdasdasdasdas"))
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-	msg, err := pq.PopLock(nil)
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-	if len(msg) == 0 {
-		return
-	}
-	err = pq.DeleteByReceipt(msg[0].Receipt)
-	if err != nil {
-		log.Fatal(err.Error())
-	}
+}
+
+func main() {
+	update()
 }

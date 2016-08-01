@@ -1,47 +1,23 @@
 package netutils
 
-import (
-	"io"
-	"net"
-)
+import "bufio"
 
-var ENDL = []byte("\n")
-var SPACE = []byte(" ")
-
-func SendCompleteData(writer io.Writer, data ...[]byte) error {
-	l := len(data) - 1
-	for idx, d := range data {
-		if _, err := writer.Write(d); err != nil {
-			return err
-		}
-		if idx < l {
-			if _, err := writer.Write(SPACE); err != nil {
-				return err
-			}
-		}
-	}
-	if _, err := writer.Write(ENDL); err != nil {
-		return err
-	}
-	return nil
+func CompleteWrite(writer *bufio.Writer) error {
+	writer.WriteByte('\n')
+	return writer.Flush()
 }
 
-func SendIncompleteData(writer net.Conn, data ...[]byte) error {
+func SendData(writer *bufio.Writer, data ...[]byte) error {
+	var err error
 	for _, d := range data {
-		if _, err := writer.Write(d); err != nil {
-			return err
-		}
-		if _, err := writer.Write(SPACE); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func SendCommand(writer net.Conn, cmd []byte, data ...[]byte) error {
-	err := SendIncompleteData(writer, cmd)
-	if err == nil {
-		err = SendCompleteData(writer, data...)
+		err = writer.WriteByte(' ')
+		_, err = writer.Write(d)
 	}
 	return err
+}
+
+func SendCommand(writer *bufio.Writer, cmd string, data ...[]byte) error {
+	writer.WriteString(cmd)
+	SendData(writer, data...)
+	return CompleteWrite(writer)
 }

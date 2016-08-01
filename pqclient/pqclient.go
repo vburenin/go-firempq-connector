@@ -1,7 +1,7 @@
 package pqclient
 
 import (
-	"net"
+	"bufio"
 
 	. "github.com/vburenin/firempq_connector/api"
 	. "github.com/vburenin/firempq_connector/encoders"
@@ -11,139 +11,133 @@ import (
 )
 
 type PriorityQueue struct {
-	conn      net.Conn
+	bufWriter *bufio.Writer
 	tokReader ITokenReader
 	queueName string
 	asyncPop  map[string]func([]PriorityQueueMessage, error)
 }
 
 var (
-	cmdPush             = []byte("PUSH")
-	cmdPop              = []byte("POP")
-	cmdPopLock          = []byte("POPLCK")
-	cmdCtx              = []byte("CTX")
-	cmdCrt              = []byte("CRT")
-	cmdSetCfg           = []byte("SETCFG")
-	cmdDeleteById       = []byte("DEL")
-	cmdDeleteByReceipt  = []byte("RDEL")
-	cmdDeleteLockedById = []byte("DELLCK")
-	cmdUnlockById       = []byte("UNLCK")
-	cmdUnlockByReceipt  = []byte("RUNLCK")
-
-	svcPqueueType = []byte("pqueue")
+	cmdPush             = "PUSH"
+	cmdPop              = "POP"
+	cmdPopLock          = "POPLCK"
+	cmdCtx              = "CTX"
+	cmdCrt              = "CRT"
+	cmdSetCfg           = "SETCFG"
+	cmdDeleteById       = "DEL"
+	cmdDeleteByReceipt  = "RDEL"
+	cmdDeleteLockedById = "DELLCK"
+	cmdUnlockById       = "UNLCK"
+	cmdUnlockByReceipt  = "RUNLCK"
 )
 
-func SetPQueueContext(queueName string, conn net.Conn, tokReader ITokenReader) (*PriorityQueue, error) {
-	if err := SendCommand(conn, cmdCtx, EncodeString(queueName)); err != nil {
+func SetPQueueContext(queueName string, bufWriter *bufio.Writer, tokReader ITokenReader) (*PriorityQueue, error) {
+	if err := SendCommand(bufWriter, cmdCtx, EncodeString(queueName)); err != nil {
 		return nil, err
 	}
+
 	if err := HandleOk(tokReader); err != nil {
 		return nil, err
 	}
+
 	pq := &PriorityQueue{
-		conn:      conn,
+		bufWriter: bufWriter,
 		tokReader: tokReader,
 		queueName: queueName,
 	}
 	return pq, nil
 }
 
-func CreatePQueue(queueName string, conn net.Conn, tokReader ITokenReader,
-	opts *PqParams) (*PriorityQueue, error) {
+func CreatePQueue(queueName string, bufWriter *bufio.Writer, tokReader ITokenReader, opts *PqParams) (*PriorityQueue, error) {
 
-	if err := SendIncompleteData(conn, cmdCrt, []byte(queueName), svcPqueueType); err != nil {
-		return nil, err
-	}
-
-	if err := SendCompleteData(conn, opts.makeRequest()...); err != nil {
-		return nil, err
-	}
+	SendCommand(bufWriter, cmdCrt, []byte(queueName))
+	SendData(bufWriter, opts.makeRequest()...)
+	CompleteWrite(bufWriter)
 
 	if err := HandleOk(tokReader); err != nil {
 		return nil, err
 	}
 
-	return SetPQueueContext(queueName, conn, tokReader)
+	return SetPQueueContext(queueName, bufWriter, tokReader)
 }
 
-func (self *PriorityQueue) GetName() string {
-	return self.queueName
+func (pq *PriorityQueue) GetName() string {
+	return pq.queueName
 }
 
-func (self *PriorityQueue) NewMessage(payload string) *PQPushMessage {
+func (pq *PriorityQueue) NewMessage(payload string) *PQPushMessage {
 	return NewPQPushMessage(payload)
 }
 
-func (self *PriorityQueue) Push(msg *PQPushMessage) error {
-	e := msg.encode()
-	if err := SendCommand(self.conn, cmdPush, e...); err != nil {
+func (pq *PriorityQueue) Push(msg *PQPushMessage) error {
+	if err := SendCommand(pq.bufWriter, cmdPush, msg.encode()...); err != nil {
 		return err
 	}
-	return HandleOk(self.tokReader)
+	return HandleOk(pq.tokReader)
 }
 
 // Pop pops available from the queue completely removing them.
-func (self *PriorityQueue) Pop(opts *popOptions) ([]*PriorityQueueMessage, error) {
-	if err := SendCommand(self.conn, cmdPop, opts.makeRequest()...); err != nil {
+func (pq *PriorityQueue) Pop(opts *popOptions) ([]*PriorityQueueMessage, error) {
+	if err := SendCommand(pq.bufWriter, cmdPop, opts.makeRequest()...); err != nil {
 		return nil, err
 	}
 
-	return self.handleMessages()
+	return pq.handleMessages()
 }
 
 // PopLock pops available from the queue locking them.
-func (self *PriorityQueue) PopLock(opts *popLockOptions) ([]*PriorityQueueMessage, error) {
-	if err := SendCommand(self.conn, cmdPopLock, opts.makeRequest()...); err != nil {
+func (pq *PriorityQueue) PopLock(opts *popLockOptions) ([]*PriorityQueueMessage, error) {
+	if err := SendCommand(pq.bufWriter, cmdPopLock, opts.makeRequest()...); err != nil {
 		return nil, err
 	}
 
-	return self.handleMessages()
+	return pq.handleMessages()
 }
 
-func (self *PriorityQueue) DeleteById(id string) error {
-	if err := SendCommand(self.conn, cmdDeleteById, EncodeString(id)); err != nil {
+func (pq *PriorityQueue) DeleteById(id string) error {
+	if err := SendCommand(pq.bufWriter, cmdDeleteById, EncodeString(id)); err != nil {
 		return err
 	}
-	return HandleOk(self.tokReader)
+	return HandleOk(pq.tokReader)
 }
 
-func (self *PriorityQueue) DeleteLockedById(id string) error {
-	if err := SendCommand(self.conn, cmdDeleteLockedById, EncodeString(id)); err != nil {
+func (pq *PriorityQueue) DeleteLockedById(id string) error {
+	if err := SendCommand(pq.bufWriter, cmdDeleteLockedById, EncodeString(id)); err != nil {
 		return err
 	}
-	return HandleOk(self.tokReader)
+	return HandleOk(pq.tokReader)
 }
 
-func (self *PriorityQueue) DeleteByReceipt(rcpt string) error {
-	if err := SendCommand(self.conn, cmdDeleteByReceipt, EncodeString(rcpt)); err != nil {
+func (pq *PriorityQueue) DeleteByReceipt(rcpt string) error {
+	if err := SendCommand(pq.bufWriter, cmdDeleteByReceipt, EncodeString(rcpt)); err != nil {
 		return err
 	}
-	return HandleOk(self.tokReader)
+	return HandleOk(pq.tokReader)
 }
 
-func (self *PriorityQueue) UnlockById(id string) error {
-	if err := SendCommand(self.conn, cmdUnlockById, EncodeString(id)); err != nil {
+func (pq *PriorityQueue) UnlockById(id string) error {
+	if err := SendCommand(pq.bufWriter, cmdUnlockById, EncodeString(id)); err != nil {
 		return err
 	}
-	return HandleOk(self.tokReader)
+	return HandleOk(pq.tokReader)
 }
 
-func (self *PriorityQueue) UnlockByReceipt(rcpt string) error {
-	if err := SendCommand(self.conn, cmdUnlockByReceipt, EncodeString(rcpt)); err != nil {
+func (pq *PriorityQueue) UnlockByReceipt(rcpt string) error {
+	if err := SendCommand(pq.bufWriter, cmdUnlockByReceipt, EncodeString(rcpt)); err != nil {
 		return err
 	}
-	return HandleOk(self.tokReader)
+	return HandleOk(pq.tokReader)
 }
 
-func (self *PriorityQueue) SetParams(params *PqParams) error {
-	if err := SendCommand(self.conn, cmdSetCfg, params.makeRequest()...); err != nil {
+func (pq *PriorityQueue) SetParams(params *PqParams) error {
+	if err := SendCommand(pq.bufWriter, cmdSetCfg, params.makeRequest()...); err != nil {
 		return err
 	}
-	return HandleOk(self.tokReader)
+	return HandleOk(pq.tokReader)
 }
 
-func (self *PriorityQueue) handleMessages() ([]*PriorityQueueMessage, error) {
-	tokens, err := self.tokReader.ReadTokens()
+func (pq *PriorityQueue) handleMessages() ([]*PriorityQueueMessage, error) {
+	tokens, err := pq.tokReader.ReadTokens()
 
 	if err != nil {
 		return nil, err
