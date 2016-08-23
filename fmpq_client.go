@@ -9,6 +9,11 @@ import (
 
 	"bufio"
 
+	"strconv"
+
+	"os"
+	"runtime/pprof"
+
 	. "github.com/vburenin/firempq_connector/fmpq_err"
 	. "github.com/vburenin/firempq_connector/parsers"
 	. "github.com/vburenin/firempq_connector/pqclient"
@@ -146,13 +151,34 @@ func pushAndPop() {
 	}
 }
 
-func update() {
-	c, err := NewFireMpqClient("tcp", "127.0.0.1:8222")
+var m sync.Mutex
+var l int64
+var st int64 = time.Now().UnixNano()
+
+const LOOP_C = 10000
+
+func cnt() {
+	m.Lock()
+	l++
+	if l == LOOP_C {
+		et := time.Now().UnixNano()
+		d := float64(et-st) / 1000000000
+		println(int64(LOOP_C / d))
+		l = 0
+		st = time.Now().UnixNano()
+	}
+	m.Unlock()
+}
+
+func update(qname string) {
+	c, err := NewFireMpqClient("tcp", "10.0.1.67:8222")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
-	pq, err := c.GetPQueue("my")
+	c.CreatePQueue(qname, nil)
+
+	pq, err := c.GetPQueue(qname)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -161,19 +187,11 @@ func update() {
 	//	log.Fatal(v.Error())
 	//}
 	l := 0
-	st := time.Now()
-	for i := 0; i < 2; i++ {
+	data := "a"
+	for {
 		l++
-
-		if l == 10000 {
-			et := time.Now()
-			d := float64(et.UnixNano()-st.UnixNano()) / 1000000000
-			println(int64(10000.0 / d))
-			l = 0
-			st = time.Now()
-		}
-
-		err = pq.Push(pq.NewMessage("asdasdasdasdas"))
+		cnt()
+		err = pq.Push(pq.NewMessage(data))
 		if err != nil {
 			log.Fatal(err.Error())
 		}
@@ -193,5 +211,15 @@ func update() {
 }
 
 func main() {
-	update()
+	f, _ := os.Create("client.profile")
+	defer f.Close()
+	pprof.StartCPUProfile(f)
+	defer pprof.StopCPUProfile()
+
+	for i := 0; i < 200; i++ {
+		n := "my" + strconv.Itoa(i)
+		go update(n)
+	}
+	// update("last")
+	time.Sleep(time.Second * 30)
 }
