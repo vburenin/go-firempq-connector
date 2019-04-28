@@ -14,11 +14,13 @@ type PriorityQueue struct {
 	bufWriter *bufio.Writer
 	tokReader ITokenReader
 	queueName string
-	asyncPop  map[string]func([]PriorityQueueMessage, error)
+	asyncPop  map[string]func([]QueueMessage, error)
 }
 
 var (
 	cmdPush             = "PUSH"
+	cmdPushBatch        = "PUSHB"
+	cmdBatchNext        = "NXT"
 	cmdPop              = "POP"
 	cmdPopLock          = "POPLCK"
 	cmdCtx              = "CTX"
@@ -30,6 +32,11 @@ var (
 	cmdUnlockById       = "UNLCK"
 	cmdUnlockByReceipt  = "RUNLCK"
 )
+
+type PushBatchItem struct {
+	Error error
+	MsgID string
+}
 
 func SetPQueueContext(queueName string, bufWriter *bufio.Writer, tokReader ITokenReader) (*PriorityQueue, error) {
 	if err := SendCommand(bufWriter, cmdCtx, EncodeString(queueName)); err != nil {
@@ -65,11 +72,31 @@ func (pq *PriorityQueue) GetName() string {
 	return pq.queueName
 }
 
-func (pq *PriorityQueue) NewMessage(payload string) *PQPushMessage {
-	return NewPQPushMessage(payload)
+func (pq *PriorityQueue) NewMessage(payload string) *Message {
+	return NewMessage(payload)
 }
 
-func (pq *PriorityQueue) Push(msg *PQPushMessage) error {
+func (pq *PriorityQueue) PushBatch(msgs ...*Message) ([]PushBatchItem, error) {
+	last := len(msgs) - 1
+	if last == -1 {
+		return nil, nil
+	}
+	pushCmd := cmdPushBatch
+	for i, msg := range msgs {
+		WriteData(pq.bufWriter, pushCmd, msg.encode())
+		if i != last {
+			pq.bufWriter.WriteByte(' ')
+		}
+		pushCmd = cmdBatchNext
+	}
+	err := CompleteWrite(pq.bufWriter)
+	if err != nil {
+		return nil, err
+	}
+	return pq.handleBatchResponse()
+}
+
+func (pq *PriorityQueue) Push(msg *Message) error {
 	if err := SendCommand(pq.bufWriter, cmdPush, msg.encode()...); err != nil {
 		return err
 	}
@@ -77,7 +104,7 @@ func (pq *PriorityQueue) Push(msg *PQPushMessage) error {
 }
 
 // Pop pops available from the queue completely removing them.
-func (pq *PriorityQueue) Pop(opts *popOptions) ([]*PriorityQueueMessage, error) {
+func (pq *PriorityQueue) Pop(opts *popOptions) ([]*QueueMessage, error) {
 	if err := SendCommand(pq.bufWriter, cmdPop, opts.makeRequest()...); err != nil {
 		return nil, err
 	}
@@ -86,7 +113,7 @@ func (pq *PriorityQueue) Pop(opts *popOptions) ([]*PriorityQueueMessage, error) 
 }
 
 // PopLock pops available from the queue locking them.
-func (pq *PriorityQueue) PopLock(opts *popLockOptions) ([]*PriorityQueueMessage, error) {
+func (pq *PriorityQueue) PopLock(opts *popLockOptions) ([]*QueueMessage, error) {
 	if err := SendCommand(pq.bufWriter, cmdPopLock, opts.makeRequest()...); err != nil {
 		return nil, err
 	}
@@ -136,7 +163,7 @@ func (pq *PriorityQueue) SetParams(params *PqParams) error {
 	return HandleOk(pq.tokReader)
 }
 
-func (pq *PriorityQueue) handleMessages() ([]*PriorityQueueMessage, error) {
+func (pq *PriorityQueue) handleMessages() ([]*QueueMessage, error) {
 	tokens, err := pq.tokReader.ReadTokens()
 
 	if err != nil {
@@ -152,4 +179,56 @@ func (pq *PriorityQueue) handleMessages() ([]*PriorityQueueMessage, error) {
 	}
 
 	return nil, UnexpectedResponse(tokens)
+}
+
+func (pq *PriorityQueue) handleBatchResponse() ([]PushBatchItem, error) {
+	tokens, err := pq.tokReader.ReadTokens()
+	if err != nil {
+		return nil, err
+	}
+	if len(tokens) < 2 {
+		return nil, UnexpectedResponse(tokens)
+	}
+	if tokens[0] == "+BATCH" {
+		size, err := ParseArraySize(tokens[1])
+		if err != nil {
+			return nil, err
+		}
+		if size < 0 {
+			return nil, UnexpectedResponse(tokens)
+		}
+		return pq.parseBatchResponse(int(size))
+
+	}
+	if err := ParseError(tokens); err != nil {
+		return nil, err
+	}
+
+	return nil, UnexpectedResponse(tokens)
+}
+
+func (pq *PriorityQueue) parseBatchResponse(size int) ([]PushBatchItem, error) {
+	respItems := make([]PushBatchItem, 0, size)
+	var id string
+	for len(respItems) < size {
+		tokens, err := pq.tokReader.ReadTokens()
+		if err != nil {
+			return nil, err
+		}
+
+		err = ParseError(tokens)
+		if err != nil {
+			respItems = append(respItems, PushBatchItem{Error: err})
+			continue
+		}
+
+		id, err = ParseMessageId(tokens)
+		if id != "" {
+			respItems = append(respItems, PushBatchItem{MsgID: id})
+			tokens = tokens[2:]
+			continue
+		}
+		return nil, UnexpectedResponse(tokens)
+	}
+	return respItems, nil
 }

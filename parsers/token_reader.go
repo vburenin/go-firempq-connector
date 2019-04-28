@@ -8,20 +8,20 @@ import (
 )
 
 const (
-	STATE_PARSE_TEXT_TOKEN     = 1
-	STATE_PARSE_BINARY_PAYLOAD = 2
-	SYMBOL_CR                  = 0x0A
+	stateParseTextToken     = 1
+	stateParseBinaryPayload = 2
+	symbolCr                = 0x0A
 )
 
 const (
-	MAX_RECV_BUFFER_SIZE  = 4096
-	MAX_BINARY_TOKEN_LEN  = 128 * 1024 * 1024
-	START_ASCII_RANGE     = 0x21
-	END_ASCII_RANGE       = 0x7E
-	INIT_TOKEN_BUFFER_LEN = 48
+	maxRecvBufferSize  = 4096
+	maxBinaryTokenLen  = 128 * 1024 * 1024
+	startAsciiRange    = 0x21
+	endAsciiRange      = 0x7E
+	initTokenBufferLen = 48
 )
 
-var ERR_TOK_PARSING_ERROR = errors.New("Error during token parsing")
+var ErrTokParsingError = errors.New("Error during token parsing")
 
 type TokenReader struct {
 	buffer []byte
@@ -32,7 +32,7 @@ type TokenReader struct {
 
 func NewTokenReader(conn net.Conn) *TokenReader {
 	tok := TokenReader{
-		buffer: make([]byte, MAX_RECV_BUFFER_SIZE),
+		buffer: make([]byte, maxRecvBufferSize),
 		bufPos: 0,
 		bufLen: 0,
 		reader: conn,
@@ -42,9 +42,9 @@ func NewTokenReader(conn net.Conn) *TokenReader {
 
 func (tok *TokenReader) ReadTokens() ([]string, error) {
 	var err error
-	var token []byte = make([]byte, 0, INIT_TOKEN_BUFFER_LEN)
+	var token []byte = make([]byte, 0, initTokenBufferLen)
 	var binTokenLen int
-	var state int = STATE_PARSE_TEXT_TOKEN
+	var state int = stateParseTextToken
 
 	result := make([]string, 0, 4)
 
@@ -60,7 +60,7 @@ func (tok *TokenReader) ReadTokens() ([]string, error) {
 
 		// Tokenize content of the buffer
 		for tok.bufPos < tok.bufLen {
-			if state == STATE_PARSE_BINARY_PAYLOAD {
+			if state == stateParseBinaryPayload {
 				availableBytes := tok.bufLen - tok.bufPos
 				if availableBytes > binTokenLen {
 					availableBytes = binTokenLen
@@ -72,9 +72,9 @@ func (tok *TokenReader) ReadTokens() ([]string, error) {
 
 				if binTokenLen <= 0 {
 					// Binary token complete
-					state = STATE_PARSE_TEXT_TOKEN
+					state = stateParseTextToken
 					result = append(result, string(token))
-					token = make([]byte, 0, INIT_TOKEN_BUFFER_LEN)
+					token = make([]byte, 0, initTokenBufferLen)
 				}
 				continue
 			}
@@ -82,25 +82,25 @@ func (tok *TokenReader) ReadTokens() ([]string, error) {
 			val := tok.buffer[tok.bufPos]
 			tok.bufPos += 1
 
-			if val >= START_ASCII_RANGE && val <= END_ASCII_RANGE {
+			if val >= startAsciiRange && val <= endAsciiRange {
 				token = append(token, val)
 			} else if len(token) > 0 {
 				if token[0] == '$' {
 					binTokenLen, err = strconv.Atoi(string(token[1:]))
-					if err == nil && (binTokenLen < 1 || binTokenLen > MAX_BINARY_TOKEN_LEN) {
-						return nil, ERR_TOK_PARSING_ERROR
+					if err == nil && (binTokenLen < 1 || binTokenLen > maxBinaryTokenLen) {
+						return nil, ErrTokParsingError
 					}
-					state = STATE_PARSE_BINARY_PAYLOAD
+					state = stateParseBinaryPayload
 					token = make([]byte, 0, binTokenLen)
 				} else {
 					result = append(result, string(token))
-					if val == SYMBOL_CR {
+					if val == symbolCr {
 						return result, nil
 					}
-					token = make([]byte, 0, INIT_TOKEN_BUFFER_LEN)
+					token = make([]byte, 0, initTokenBufferLen)
 				}
 			} else {
-				if val == SYMBOL_CR {
+				if val == symbolCr {
 					return result, nil
 				}
 			}

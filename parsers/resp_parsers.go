@@ -18,3 +18,14 @@ func HandleOk(tokReader ITokenReader) error {
 	}
 	return UnexpectedResponse(tokens)
 }
+
+func ParseMessageId(tokens []string) (string, error) {
+	if len(tokens) < 2 {
+		return "", UnexpectedErrorFormat(tokens)
+	}
+	if tokens[0] == "+MSG" {
+		return tokens[1], nil
+
+	}
+	return "", nil
+}

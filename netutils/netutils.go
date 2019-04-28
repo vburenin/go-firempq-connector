@@ -21,3 +21,12 @@ func SendCommand(writer *bufio.Writer, cmd string, data ...[]byte) error {
 	SendData(writer, data...)
 	return CompleteWrite(writer)
 }
+
+func WriteData(writer *bufio.Writer, cmd string, data [][]byte) (err error) {
+	writer.WriteString(cmd)
+	for _, d := range data {
+		writer.WriteByte(' ')
+		_, err = writer.Write(d)
+	}
+	return err
+}

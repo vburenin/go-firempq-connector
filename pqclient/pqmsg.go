@@ -9,7 +9,6 @@ import (
 var prmId = []byte("ID")
 var prmPopWait = []byte("WAIT")
 var prmLockTimeout = []byte("TIMEOUT")
-var prmPriority = []byte("PRIORITY")
 var prmLimit = []byte("LIMIT")
 var prmPayload = []byte("PL")
 var prmDelay = []byte("DELAY")
@@ -18,7 +17,7 @@ var prmAsync = []byte("ASYNC")
 var prmSyncWait = []byte("SYNCWAIT")
 var prmMsgTtl = []byte("TTL")
 
-type PQPushMessage struct {
+type Message struct {
 	id       string
 	priority int64
 	payload  string
@@ -28,11 +27,10 @@ type PQPushMessage struct {
 	async    bool
 }
 
-func NewPQPushMessage(payload string) *PQPushMessage {
-	return &PQPushMessage{
+func NewMessage(payload string) *Message {
+	return &Message{
 		payload:  payload,
 		id:       "",
-		priority: 0,
 		delay:    -1,
 		ttl:      -1,
 		syncWait: false,
@@ -40,64 +38,64 @@ func NewPQPushMessage(payload string) *PQPushMessage {
 	}
 }
 
-func (self *PQPushMessage) SetId(id string) *PQPushMessage {
-	self.id = id
-	return self
+func (msg *Message) SetId(id string) *Message {
+	msg.id = id
+	return msg
 }
 
-func (self *PQPushMessage) SetPriority(priority int64) *PQPushMessage {
-	self.priority = priority
-	return self
+func (msg *Message) SetPriority(priority int64) *Message {
+	msg.priority = priority
+	return msg
 }
 
-func (self *PQPushMessage) SetDelay(delay uint64) *PQPushMessage {
-	self.delay = int64(delay)
-	return self
+func (msg *Message) SetDelay(delay uint64) *Message {
+	msg.delay = int64(delay)
+	return msg
 }
 
-func (self *PQPushMessage) SetTtl(ttl uint64) *PQPushMessage {
-	self.ttl = int64(ttl)
-	return self
+func (msg *Message) SetTtl(ttl uint64) *Message {
+	msg.ttl = int64(ttl)
+	return msg
 }
 
-func (self *PQPushMessage) SetSyncWait(b bool) *PQPushMessage {
-	self.syncWait = b
-	return self
+func (msg *Message) SetSyncWait(b bool) *Message {
+	msg.syncWait = b
+	return msg
 }
 
-func (self *PQPushMessage) SetAsync(b bool) *PQPushMessage {
-	self.async = b
-	return self
+func (msg *Message) SetAsync(b bool) *Message {
+	msg.async = b
+	return msg
 }
 
-func (self *PQPushMessage) encode() [][]byte {
-	data := make([][]byte, 0, 2)
-	if self.id != "" {
+func (msg *Message) encodeTo(data [][]byte) [][]byte {
+	if msg.id != "" {
 		data = append(data, prmId)
-		data = append(data, EncodeString(self.id))
+		data = append(data, EncodeString(msg.id))
 	}
-	if self.priority > 0 {
-		data = append(data, prmPriority)
-		data = append(data, EncodeInt64(self.priority))
-	}
-	if self.delay >= 0 {
+	if msg.delay >= 0 {
 		data = append(data, prmDelay)
-		data = append(data, EncodeInt64(self.delay))
+		data = append(data, EncodeInt64(msg.delay))
 	}
-	if self.ttl >= 0 {
+	if msg.ttl >= 0 {
 		data = append(data, prmMsgTtl)
-		data = append(data, EncodeInt64(self.ttl))
+		data = append(data, EncodeInt64(msg.ttl))
 	}
-	if self.syncWait {
+	if msg.syncWait {
 		data = append(data, prmSyncWait)
 	}
 
 	data = append(data, prmPayload)
-	data = append(data, EncodeString(self.payload))
+	data = append(data, EncodeString(msg.payload))
 	return data
 }
 
-type PriorityQueueMessage struct {
+func (msg *Message) encode() [][]byte {
+	data := make([][]byte, 0, 2)
+	return msg.encodeTo(data)
+}
+
+type QueueMessage struct {
 	Id       string
 	Payload  string
 	Receipt  string
@@ -106,12 +104,12 @@ type PriorityQueueMessage struct {
 	PopCount int64
 }
 
-func parsePoppedMessages(tokens []string) ([]*PriorityQueueMessage, error) {
+func parsePoppedMessages(tokens []string) ([]*QueueMessage, error) {
 	if len(tokens) == 0 {
 		WrongMessageFormatError("No array header")
 	}
 	arraySize, err := ParseArraySize(tokens[0])
-	msgs := make([]*PriorityQueueMessage, 0, arraySize)
+	msgs := make([]*QueueMessage, 0, arraySize)
 	if err != nil {
 		return nil, err
 	}
@@ -139,8 +137,8 @@ func parsePoppedMessages(tokens []string) ([]*PriorityQueueMessage, error) {
 	return msgs, nil
 }
 
-func parseMessage(tokens []string) (*PriorityQueueMessage, error) {
-	msg := PriorityQueueMessage{}
+func parseMessage(tokens []string) (*QueueMessage, error) {
+	msg := QueueMessage{}
 	var err error
 
 	idx := len(tokens) - 2
